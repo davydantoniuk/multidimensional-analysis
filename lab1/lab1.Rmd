@@ -1,0 +1,176 @@
+---
+title: "goof"
+author: "MW"
+date: "2024-10-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(stringr)
+head(mpg)
+help(mpg)
+```
+
+Rozważane zmienne: 
+- `trans` - rodzaj skrzyni biegów, auto/manual (i ile/bez-stopniowa), nasza zmienna grupująca,
+- `cty` - spalanie w mieście (city),
+- `hwy` - spalanie na autostradzie (highway). 
+
+GŁÓWNE ZADANIE:
+
+Przeanalizuj, czy dwie grupy auto/manual różnią się pod względem spalania (spallania w nmieście i na autostradzie). 
+
+PODZADANIA:
+a) Na podstawie zmiennej `trans` utwórz nową zmienną `trans2` z dwoma stanami - auta lub manual.
+
+```{r}
+data <- mpg
+data$trans2 <- data$trans
+View(data)
+
+data$trans2 <- str_remove_all(data$trans2, "\\(.*?\\)")
+View(data)
+```
+
+```{r}
+data <- mpg %>% 
+  mutate(trans2 = word(trans,1,sep=fixed("("))) %>% 
+  as.data.frame()
+View(data)
+```
+
+b) Określ podstawowe statystyki 'cty' oraz 'hwy' w grupach auto/manual
+
+```{r}
+data %>% 
+  group_by(trans2) %>% 
+  mutate(n=n()) %>% 
+  group_by(trans2,n) %>% 
+  summarise_at(vars(cty,hwy),list(~mean(.),~sd(.)))
+```
+c)Przedstaw na jednym wykresie spalanie na autostradzie i spalanie w mieście w obu grupach (w formie boxplotów)
+
+```{r}
+data %>% 
+  select(cty,hwy,trans2) %>% 
+  pivot_longer(cols=cty:hwy,
+               names_to = "cty_hwy",
+               values_to = "mpg") %>% 
+  ggplot(aes(x=cty_hwy,y=mpg,color=trans2)) +
+  geom_boxplot()
+
+```
+
+```{r}
+library(ggpubr)
+
+data %>% 
+  select(cty,hwy,trans2) %>% 
+  ggboxplot(x="trans2",
+            y=c("cty","hwy"),
+            combine=1,
+            color="trans2",
+            add="jitter")
+```
+
+d) Sprawdż, za pomocą odpowiedniego testu statystycznego czy w rozważanych dwóch grupach spełnione jest założenie o wielowymiarowym rozkładzie normalnym.
+
+```{r}
+library(rstatix)
+data %>% 
+  select(trans2,cty,hwy) %>% 
+  group_split(trans2, .keep=0) %>% 
+  map(~mshapiro_test(.x))
+```
+
+Podział jest ze względu na 'trans2' - alfabetycznie, czyli mamy:
+
+-dla groupy 'auto' statystyka 0.971, p-value 0.002111, odrzucamy hipotezę o wielowymiarowej normalności 'cty' i 'hwy'.
+
+- dla groupy 'manual' statystyka 0.895, p-value 0.0000110, również  odrzucamy hipotezę o wielowymiarowej normalności 'cty' i 'hwy'.
+
+
+e)Dokonaj transformacji zmiennych 'cty' oraz 'hwy' za pomocą przekształcenia Boxa-Coxa a następnie sprawdż, czy spełnione jest załóżenie o normalności wielowymiarowej.
+
+```{r}
+summary(car::powerTransform(cbind(data$cty,data$hwy)~1))
+
+data %>% 
+  mutate(log_cty = log(cty), sqrt_hwy = sqrt(hwy)) %>% 
+  select(trans2,log_cty,sqrt_hwy) %>% 
+  group_split(trans2, .keep=0) %>% 
+  map(~mshapiro_test(.x))
+```
+
+Możemy odrzucić hipotezę zerową, więc zalożenie nie jest spelnione
+
+Nadal nie jest spełnione założenie o normalności wielowymiarowej 
+
+Ale mamy liczną próbę - przypadków jest ponad 200.
+
+Ze wzgłędu na liczebność próby, przeprowadzimy test Hotellinga mimo niespełnienia założenia o normalności.
+
+f)Sprawdż czy spełnione jest załozenie o jednorodności macierzy kowariancji(przed transformacją zmiennych 'cty' oraz 'hwy' za pomocą przekształcenia Boxa-Coxa oraz po takiej transformacji).
+```{r}
+dane <- data
+box_m(dane[,c("cty","hwy")],dane[,"trans2"])
+```
+Dla zmiennych bez transformacji odrzucamy hipotezę o jednorodności macierzy kowariancji
+
+```{r}
+d1 <- dane %>%
+  mutate(log_cty = log(cty), sqrt_hwy = sqrt(hwy)) %>%
+  select(trans2, log_cty, sqrt_hwy)
+
+box_m(d1[, c('log_cty', 'sqrt_hwy')], d1[, 'trans2'])
+```
+
+Po transformacji jest jednorodność macierzy kowariancji.
+
+g) Przeprowadź test Hotellinga
+
+```{r}
+library(Hotelling)
+hotelling <- hotelling.test(cbind(log_cty, sqrt_hwy)~trans2, data = d1)
+hotelling
+```
+
+Odrzucamy hipotezę zerową - wektory średnich w obu grupach nie są jednakowe.
+
+###Analiza post-hoc 
+Testami brzegowymi sprawdzimy, które zmienne są zróżnicowane. Porównania brzegowe można wykonać testami t-Studenta, lub testem Welcha w załeżności od tego czy wariancje są jednorodne. Gdy złożenia o jednorodności wariancji i normalności nie są spełnione zaleca się stosować test nieparametryczny Manna-Whitneya.
+
+h)Sprawdż, czy jest jednorodność wariancji w grupach za pomocą test Levene'a. Jeśli tak, wykonaj test t.
+
+```{r}
+d1 %>% 
+  pivot_longer(cols=log_cty:sqrt_hwy) %>% 
+  group_by(name) %>% 
+  levene_test(value~trans2)
+```
+
+Jest jednorodność wariancji w grupach, można stosować test t.
+
+
+```{r}
+d1 %>%
+  pivot_longer(cols = log_cty:sqrt_hwy) %>%
+  group_by(name) %>%
+  t_test(value~trans2, var.equal = 1)
+```
+
+Średnie `log_cty` różnią się pomiędzy `auto` a `manual`. 
+
+Średnie `sqrt_hwy` różnią się pomiędzy `auto` a `manual`. 
+
+
+
+
+
+

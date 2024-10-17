@@ -1,0 +1,100 @@
+---
+title: "lab2"
+author: "Antoniuk Davyd"
+date: "2024-10-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Główne zadanie: 
+Przeanalizuj, czy dwie grupy (partie 4 i 5) różnią się pod względem stężenia pierwiastków. 
+
+```{r}
+library(tidyverse)
+library(ggpubr)
+library(Hotelling)
+library(rstatix)
+library(dplyr)
+```
+
+###Wczytanie danych
+```{r}
+data("bottle.df")
+
+head(bottle.df)
+nrow(bottle.df)
+```
+Zbiór danych zawiera 120 pomiarów butelek napojów z 6 partii. Wybieramy partie 4 oraz 5.
+```{r}
+p45 <- bottle.df %>% 
+  filter(Number %in% 4:5) %>% 
+  mutate(partia = as.factor(Number)) %>% 
+  select(-Number)
+
+```
+
+###Szukamy średnią i odchylenie standardowe
+```{r}
+p45 %>%
+  group_by(partia) %>%
+  get_summary_stats(type = "mean_sd")
+```
+
+```{r}
+p45_long <- p45 %>%
+  pivot_longer(-partia, names_to = "element", values_to = "concentration")
+
+ggboxplot(p45_long, x = "partia", y = "concentration", color = "partia", facet.by = "element", 
+          ylab = "Stężenie", xlab = "Partia")
+```
+
+```{r}
+p45 %>% 
+  ggboxplot(x="partia",
+            y=c("Mn","Ba","Sr","Zr","Ti"),
+            combine=1,
+            color="partia",
+            add="jitter")
+```
+
+
+```{r}
+p45 %>% 
+  pivot_longer(cols=Mn:Ti,
+               names_to="Element",
+               values_to = "Concentration") %>% 
+  ggboxplot(x="Element",
+            y="Concentration",
+            color="partia",
+            ylab="Concentration [ppm]",
+            add="jitter",
+            palette="Set2")
+```
+
+```{r}
+box_m(data=p45[,-6],
+      group=p45[,6])
+```
+
+Test Boxa pokazał że brak danych jest jednorodności macierzy kowariancji pomiędzy grupami. Układ jest zrównoważony(jednakowa liczebność w podgrupach), więc wpływ niejednorodności macierzy kowariancji ma rozkład statystyki jest zaniedbywalny.
+
+Przeprowadzamy test Hotelinga
+```{r}
+h <- hotelling.test(,~partia,data=p45)
+h
+
+# # Ensure that 'partia' is a factor
+# p45$partia <- as.factor(p45$partia)
+# 
+# # Split the data into two groups based on the grouping factor
+# group1 <- p45[p45$partia == 4, 1:5]  # Data for group where partia is 4
+# group2 <- p45[p45$partia == 5, 1:5]  # Data for group where partia is 5
+# 
+# # Run the Hotelling's T-squared test on the two groups
+# hotelling.test(group1, group2)
+```
+Odrzucamy hipotezę zerową
+Test wykazał istotność różnic
