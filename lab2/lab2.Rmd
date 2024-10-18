@@ -91,3 +91,24 @@ h
 ```
 Odrzucamy hipotezę zerową
 Test wykazał istotność różnic
+
+```{r}
+p45 %>% 
+  pivot_longer(cols=c(Mn,Ba,Sr,Zr,Ti)) %>% 
+  group_by(name) %>% 
+  levene_test(value~partia)
+```
+
+Jest jednorodność wariancji w grupach, można stosować test t.
+
+```{r}
+p45 %>%
+  pivot_longer(cols = Mn:Ti) %>%
+  group_by(name) %>%
+  t_test(value~partia, var.equal = 1)
+```
+Średnie Ba,Mn,Sr,Zr róznią sie w partiach 4 i 5
+Średnia Ti nie różnią się w partiach 4 i 5
+
+
+
