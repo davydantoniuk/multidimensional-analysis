@@ -1,0 +1,199 @@
+---
+title: "lab3"
+author: "Antoniuk Davyd"
+date: "2024-10-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(ggpubr)
+library(rstatix)
+library(car)
+library(broom)
+library(datarium)
+```
+
+Test MANOVA dla trzech grup
+
+```{r}
+head(iris)
+nrow(iris)
+ncol(iris)
+```
+
+Zbiór danych składa się z 150 obserwacji. Występują następujące zmienne:
+ 
+* `Sepal.Length` -- długość kielicha,
+ 
+* `Sepal.Width` -- szerokość kielicha,
+ 
+* `Petal.Length` -- długość płatka,
+ 
+* `Petal.Width` -- szerokość płatka,
+ 
+* `Species` -- gatunek.
+ 
+Będziemy się zajmowali zmiennymi `Sepal.Length`, `Petal.Length` w podziale na `Species`.
+
+
+Wybieramy interesujące nas zmienne oraz dodajemy kolumnę `id` numerującą obserwacje (od 1 do 150).
+```{r}
+iris2<-iris %>% 
+  select(Sepal.Length, Petal.Length, Species) %>% 
+  add_column(id=1:nrow(iris), .before =1)
+head(iris2)
+```
+Podstawowe statystyki (średnia i odchylenie standardowe, liczba obserwacji w grupach) dla zmiennych `Petal.Length` i `Sepal.Length`, pogrupowane według `Species`.
+```{r}
+iris2 %>% 
+  group_by(Species) %>% 
+  mutate(n=n()) %>% 
+  group_by(Species, n) %>% 
+  summarise_at(vars(Petal.Length,Sepal.Length),list(~mean(.),~sd(.)))
+```
+Tworzymy połączony boxplot `Sepal.Length` i `Petal.Length` z podziałem ze względu na `Species`.
+```{r}
+ggboxplot(iris2, x='Species',y=c('Sepal.Length', 'Petal.Length'), 
+          merge=TRUE)
+```
+Założenia
+Mamy następujące założenia:
+ 
+* odpowiednia liczebność próbki: liczebność w każdej podgrupie > liczba zmiennych
+(W każdej podgrupie mamy po 50 obserwacji. Założenie o odpowiedniej liczebności grup jest spełnione.)
+* niezależność obserwacji: każdy obiekt należy tylko do jednej grupy. Nie ma związku pomiędzy obserwacjami w każdej grupie. Dla każdego obiektu dokonano tylko jednego pomiaru. Dobór próbki powinien być całkowicie losowy.
+(każdy obiekt należy do innej gruoy)
+* brak jedno- lub wielowymiarowych elementów odstajacych
+ 
+* wielowymiarowa normalność: można ją sprawdzić testem Shapiro-Wilka za pomocą funkcji mshapiro_test() z pakietu rstatix
+ 
+* brak współliniowości - zmienne zależne nie mogą być zbytnio skorelowane ze sobą. Korelacja nie powinna przekraczać $0.9$
+ 
+* liniowość w podgrupach dla wszystkich zmiennych
+ 
+* jednorodność wariancji: można tu użyć testu Levene’a
+ 
+* jednorodność macierzy kowariancji: można tu użyć testu M-Boxa. Jest to odpowiednik wielowymiarowej jednorodności wariancji.
+ surprised 2
+
+Jednowymiarowe elementy odstające mogą być łatwo znalezione przy użyciu funkcji `identify_outliers()` (z pakietu `rstatix`).
+Ze względu na `Sepal.Length`:
+```{r}
+iris2 %>%
+group_by(Species) %>%
+identify_outliers(Sepal.Length)
+```
+
+Ze względu na `Petal.Length`:
+```{r}
+iris2 %>%
+group_by(Species) %>%
+identify_outliers(Petal.Length)
+```
+
+Nie ma elementów odstających (skrajnych (extreme)).
+
+Wielowymiarowe obserwacje odstające
+Wielowymiarowe elementy odstające to punkty, które mają nietypową kombinację wartości zmiennych zależnych. W przypadku MANOVY, do wykrywania elementów odstających zwykle używamy odległości Mahalanobisa. Ta odległość mówi nam, jak daleko jest obserwacja od środka chmury, biorąc pod uwagę także kształt chmury (kowariancję).
+ 
+```{r}
+iris2 %>%
+group_by(Species) %>%
+mahalanobis_distance(-id) %>% # bez kolumny id
+as.data.frame()
+```
+
+Nie ma żadnych wielowymiarowych elementów odstających.
+
+
+* wielowymiarowa normalność: można ją sprawdzić testem Shapiro-Wilka za pomocą funkcji mshapiro_test() z pakietu rstatix
+```{r}
+iris2 %>%
+select(Sepal.Length, Petal.Length) %>%
+mshapiro_test()
+```
+
+Nie ma podstaw do odrzucenia hipotezy o wielowymiarowej normalności.
+
+
+Korelacje pomiędzy zmiennymi zależnymi powinny być średnie, ale nie zbyt wysokie (poniżej 0.9). Dla dwóch zmiennych stosujemy `cor_test()`, dla większej ilości można np. `cor_mat()`.
+```{r}
+iris2 %>%
+cor_test(Sepal.Length, Petal.Length)
+```
+
+Zalóżenie jest spelnione, ponieważ wsp. korelacji jest mniejszy od 0.9
+
+
+Liniowość
+```{r}
+library(GGally)
+results <- iris2 %>%
+select(Sepal.Length, Petal.Length, Species) %>%
+group_by(Species) %>%
+doo(~ggpairs(.)+theme_bw(), result = 'plots')
+results
+```
+Wyświetlamy rysunki:
+ 
+```{r}
+results$plots
+```
+ 
+Zależności są liniowe. W przypadku gdyby nie było liniowości, można rozważyć transformację, usunięcie zmiennej lub i tak przeprowadzić analizę (z mniejszą mocą).
+
+
+
+
+Jednorodność wariancji
+```{r}
+iris2 %>% 
+pivot_longer(cols = Sepal.Length:Petal.Length) %>% 
+group_by(name) %>% 
+levene_test(value~Species)
+```
+Nie jest spełnione założenie o jednorodności wariancji. Można wykonać transformację. Można też przeprowadzić test MANOVA, jednak należy pamiętać o tym, że założenie jest niespełnione i dobrać odpowiednie testy post hoc.
+
+Jednorodność macierzy kowariancji
+```{r}
+box_m(iris2[,c("Sepal.Length","Petal.Length")], iris2[,"Species"])
+```
+
+Nie jest spełnione założenie o jednorodności.
+ 
+Ale mamy układ zrównoważony (jednakowa liczebność w podgrupach). Można wykonać transformację, albo przejść dalej, ale w MANOVIE użyć statystyki Pillai’a zamiast Wilka.
+
+W teście Manova wybieramy statystykę  Pillai’a, ponieważ nie spełnione są założenia o jednorodności wariancji i kowariancji. 
+
+MANOVA
+Mamy do wyboru cztery statystyki: Wilks, Pillai, Hotelling-Lawley, Roy.
+ 
+```{r}
+model <- lm(cbind(Sepal.Length, Petal.Length)~Species, iris2)
+Manova(model, test.statistic = "Pillai")
+```
+Mamy istotną różnicę pomiędzy gatunkami.(p<0.05)
+
+Przeprowadzamy analizę post hoc.
+
+Testy post-hoc
+Można jeszcze wykonać testy ANOVA dla poszczególnych zmiennych:
+ 
+* anova_test() [rstatix]: gdy mamy normalność i jednorodność macierzy kowariancji
+ 
+* welch_anova_test() [rstatix]: gdy nie ma jednorodności macierzy kowariancji
+ 
+* kruskal_test() [rstatix]: test Kruskal-Wallis, nieparametryczny odpowiednik ANOVY
+
+```{r}
+iris2 %>% 
+pivot_longer(cols = Sepal.Length:Petal.Length) %>% 
+group_by(name) %>% 
+welch_anova_test(value ~ Species)
+```
+Zarówno w przypadku `Petal.Length` jak i `Sepal.Length` mamy różnice w podgrupach ze względu na`Species`.
