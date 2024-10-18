@@ -52,6 +52,7 @@ ggboxplot(p45_long, x = "partia", y = "concentration", color = "partia", facet.b
           ylab = "Stężenie", xlab = "Partia")
 ```
 
+Wykres pokazujący rozkład stężenia różnych elementów dla dwóch partii (numer 4 i 5)
 ```{r}
 p45 %>% 
   ggboxplot(x="partia",
@@ -61,6 +62,7 @@ p45 %>%
             add="jitter")
 ```
 
+Wykres pudełkowy dla zmiennych "Mn", "Ba", "Sr", "Zr", "Ti", z rozróżnieniem na partie ta punktami jitter.
 
 ```{r}
 p45 %>% 
